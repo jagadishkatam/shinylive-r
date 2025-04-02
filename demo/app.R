@@ -87,6 +87,12 @@ create_summary <- function(data, group = NULL, cols = NULL, ...) {
   }
   
 }
+
+
+# adsl <- tidyCDISC::adsl
+# getwd()
+# save(adsl,file=paste0(getwd(),"/adsl.RData"))
+
 # debugonce(create_summary)
 
 ui <- fluidPage(
@@ -100,7 +106,8 @@ ui <- fluidPage(
       fileInput("file", "Upload File", accept = c(".csv", ".Rdata", ".rds")),
       selectInput("group_col", "Select Grouping Column(s)", choices = NULL, multiple = TRUE),
       selectInput("summary_col", "Select Summary Column(s)", choices = NULL, multiple = TRUE),
-      textInput("filter_val", "Enter Filter Expression (e.g., Age > 30 & Gender == 'M')")
+      textInput("filter_val", "Enter Filter Expression (e.g., Age > 30 & Gender == 'M')"),
+      actionButton('click', 'Submit')
     ),
     mainPanel(
       class = "mainpanel",
@@ -112,11 +119,14 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   data <- reactive({
+    validate(need(tools::file_ext(input$file$name) %in% c('csv', 'RData','rds'), 'please check the datafile extension'))
     req(input$file)
     ext <- tools::file_ext(input$file$name)
+    
+    
     if (ext == "csv") {
       read.csv(input$file$datapath)
-    } else if (ext == "Rdata") {
+    } else if (ext == "RData") {
       load(input$file$datapath)
       get(ls()[1])
     } else if (ext == "rds") {
@@ -124,23 +134,33 @@ server <- function(input, output, session) {
     } else {
       stop("Unsupported file type")
     }
+    
   })
+  
   observe({
+    # validate(need(try(data()!=''), 'please check the data'))
     req(data())
+    
     cols <- colnames(data())
     updateSelectInput(session, "group_col", choices = cols)
     updateSelectInput(session, "summary_col", choices = cols)
   })
+  
   filtered_data <- reactive({
+    validate(need(nzchar(input$filter_val), 'please give the subset condition'))
     req(data(), input$filter_val)
     d <- data()
     d <- d |> filter(eval(parse(text = input$filter_val)))
     d
-  })
+  }) %>% bindEvent(input$click)
+  
   summary_table <- reactive({
+    # validate(need(try(data()!=''), 'please check the data'))
     req(filtered_data(), input$group_col, input$summary_col)
     create_summary(data = filtered_data(), group = input$group_col, cols = input$summary_col)
   })
+  
+  
   output$summary_table <- render_gt({
     summary_table()
   })
